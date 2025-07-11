@@ -1,5 +1,27 @@
 // Knowledge Base System for Axie Studio AI Assistant
 
+export interface ConversationContext {
+  messages: Array<{ role: 'user' | 'assistant'; content: string }>;
+  currentLanguage: 'sv' | 'en';
+  userMessage: string;
+}
+
+export interface ConversationAnalysis {
+  stage: 'greeting' | 'inquiry' | 'interested' | 'ready_to_book' | 'off_topic';
+  interestLevel: 'none' | 'low' | 'medium' | 'high';
+  topicsDiscussed: string[];
+  hasAskedPrices: boolean;
+  hasShownBuyingIntent: boolean;
+  conversationLength: number;
+}
+
+export interface BookingIntentAnalysis {
+  shouldShow: boolean;
+  serviceType?: string;
+  confidence: number;
+  reason: string;
+}
+
 interface KnowledgeFile {
   name: string;
   content: string;
@@ -10,6 +32,8 @@ interface KnowledgeFile {
 class KnowledgeBase {
   private files: KnowledgeFile[] = [];
   private isLoaded = false;
+  private securityViolationCount = 0;
+  private offTopicAttempts = 0;
 
   async loadKnowledgeBase(): Promise<void> {
     if (this.isLoaded) return;
@@ -122,6 +146,149 @@ class KnowledgeBase {
     return englishScore > swedishScore ? 'en' : 'sv';
   }
 
+  analyzeConversation(context: ConversationContext): ConversationAnalysis {
+    const messages = context.messages;
+    const userMessages = messages.filter(m => m.role === 'user');
+    const allContent = messages.map(m => m.content.toLowerCase()).join(' ');
+    
+    // Analyze topics discussed
+    const topicsDiscussed: string[] = [];
+    const topicKeywords = {
+      'website': ['hemsida', 'website', 'webbplats', 'web'],
+      'app': ['app', 'mobilapp', 'application'],
+      'booking': ['bokning', 'booking', 'bokningssystem'],
+      'ecommerce': ['e-handel', 'webshop', 'shop', 'commerce'],
+      'pricing': ['pris', 'kostnad', 'price', 'cost', 'kr', 'sek']
+    };
+    
+    Object.entries(topicKeywords).forEach(([topic, keywords]) => {
+      if (keywords.some(keyword => allContent.includes(keyword))) {
+        topicsDiscussed.push(topic);
+      }
+    });
+    
+    // Check if user has asked about prices
+    const hasAskedPrices = /\b(pris|kostnad|price|cost|hur mycket|how much|vad kostar|what does.*cost)\b/i.test(allContent);
+    
+    // Check for buying intent
+    const buyingIntentKeywords = [
+      'vill ha', 'behöver', 'köpa', 'beställa', 'boka', 'komma igång',
+      'want', 'need', 'buy', 'order', 'book', 'get started', 'interested in'
+    ];
+    const hasShownBuyingIntent = buyingIntentKeywords.some(keyword => 
+      allContent.includes(keyword.toLowerCase())
+    );
+    
+    // Determine conversation stage
+    let stage: ConversationAnalysis['stage'] = 'greeting';
+    if (userMessages.length === 0) {
+      stage = 'greeting';
+    } else if (topicsDiscussed.length === 0) {
+      stage = 'inquiry';
+    } else if (hasAskedPrices || topicsDiscussed.length > 1) {
+      stage = 'interested';
+    } else if (hasShownBuyingIntent && hasAskedPrices) {
+      stage = 'ready_to_book';
+    }
+    
+    // Determine interest level
+    let interestLevel: ConversationAnalysis['interestLevel'] = 'none';
+    if (topicsDiscussed.length > 0) interestLevel = 'low';
+    if (hasAskedPrices) interestLevel = 'medium';
+    if (hasShownBuyingIntent && hasAskedPrices) interestLevel = 'high';
+    
+    return {
+      stage,
+      interestLevel,
+      topicsDiscussed,
+      hasAskedPrices,
+      hasShownBuyingIntent,
+      conversationLength: userMessages.length
+    };
+  }
+  
+  analyzeBookingIntent(response: string, context: ConversationContext): BookingIntentAnalysis {
+    const conversationAnalysis = this.analyzeConversation(context);
+    
+    // Check if response contains booking intent marker
+    const bookingMatch = response.match(/BOOKING_INTENT:([^:]+):([^|]+)/);
+    
+    // Complex logic for showing booking button
+    const shouldShow = this.shouldShowBookingButton(response, conversationAnalysis, context);
+    
+    let serviceType = undefined;
+    let confidence = 0;
+    let reason = 'No booking intent detected';
+    
+    if (bookingMatch && shouldShow) {
+      serviceType = bookingMatch[1];
+      confidence = 0.9;
+      reason = 'Explicit booking intent with high interest';
+    } else if (shouldShow) {
+      // Determine service type from context
+      serviceType = this.determineServiceType(context);
+      confidence = 0.7;
+      reason = 'High interest level detected';
+    }
+    
+    return {
+      shouldShow,
+      serviceType,
+      confidence,
+      reason
+    };
+  }
+  
+  private shouldShowBookingButton(response: string, analysis: ConversationAnalysis, context: ConversationContext): boolean {
+    // Don't show for greetings or first interactions
+    if (analysis.stage === 'greeting' || analysis.conversationLength < 2) {
+      return false;
+    }
+    
+    // Don't show for off-topic conversations
+    if (analysis.stage === 'off_topic') {
+      return false;
+    }
+    
+    // Don't show if user just asked general questions
+    const isGeneralQuestion = /\b(vad är|what is|berätta om|tell me about|hur fungerar|how does)\b/i.test(context.userMessage);
+    if (isGeneralQuestion && !analysis.hasAskedPrices) {
+      return false;
+    }
+    
+    // Show if user has high interest
+    if (analysis.interestLevel === 'high') {
+      return true;
+    }
+    
+    // Show if user asked about prices and showed some interest
+    if (analysis.hasAskedPrices && analysis.interestLevel === 'medium') {
+      return true;
+    }
+    
+    // Show if response contains explicit booking intent
+    if (response.includes('BOOKING_INTENT:')) {
+      return true;
+    }
+    
+    return false;
+  }
+  
+  private determineServiceType(context: ConversationContext): string {
+    const allContent = context.messages.map(m => m.content.toLowerCase()).join(' ');
+    
+    if (allContent.includes('app') || allContent.includes('mobilapp')) {
+      return 'app-development';
+    } else if (allContent.includes('bokning') || allContent.includes('booking')) {
+      return 'booking-system';
+    } else if (allContent.includes('webshop') || allContent.includes('e-handel')) {
+      return 'ecommerce';
+    } else if (allContent.includes('hemsida') || allContent.includes('website')) {
+      return 'website';
+    } else {
+      return 'onboarding'; // Default to consultation
+    }
+  }
   needsSpecificInformation(message: string, language: 'sv' | 'en'): boolean {
     const lowerMessage = message.toLowerCase();
     
@@ -147,7 +314,7 @@ class KnowledgeBase {
     return triggers.some(keyword => lowerMessage.includes(keyword));
   }
 
-  getRelevantContext(message: string, language: 'sv' | 'en'): string {
+  getRelevantContext(message: string, language: 'sv' | 'en', context?: ConversationContext): string {
     if (!this.isLoaded) {
       console.warn('Knowledge base not loaded yet');
       return '';
@@ -188,29 +355,50 @@ class KnowledgeBase {
   }
 
   // Security check for inappropriate content
-  checkSecurity(message: string, language: 'sv' | 'en'): { isViolation: boolean; reason?: string } {
+  checkSecurity(message: string, language: 'sv' | 'en', context?: ConversationContext): { isViolation: boolean; reason?: string } {
     const lowerMessage = message.toLowerCase();
     
-    const swedishViolations = [
-      { keywords: ['hat', 'hatar', 'idiot', 'dum', 'korkad'], reason: 'Inappropriate language detected' },
-      { keywords: ['spam', 'reklam', 'köp nu', 'gratis pengar'], reason: 'Spam content detected' },
-      { keywords: ['personuppgifter', 'personnummer', 'lösenord'], reason: 'Personal information sharing' },
-      { keywords: ['owner', 'ägare', 'skapare', 'creator', 'model', 'modell'], reason: 'Asking about AI internals' },
-      { keywords: ['my ai', 'min ai', 'you are mine', 'du är min'], reason: 'Attempting to claim ownership' }
-    ];
-
-    const englishViolations = [
-      { keywords: ['hate', 'stupid', 'idiot', 'dumb'], reason: 'Inappropriate language detected' },
-      { keywords: ['spam', 'buy now', 'free money', 'advertisement'], reason: 'Spam content detected' },
-      { keywords: ['personal data', 'social security', 'password'], reason: 'Personal information sharing' },
-      { keywords: ['owner', 'creator', 'model', 'who made you'], reason: 'Asking about AI internals' },
-      { keywords: ['my ai', 'you are mine', 'be called'], reason: 'Attempting to claim ownership' }
-    ];
-
-    const violations = language === 'sv' ? swedishViolations : englishViolations;
+    // Enhanced security patterns
+    const enhancedViolations = {
+      sv: [
+        { keywords: ['hat', 'hatar', 'idiot', 'dum', 'korkad', 'jävla', 'fan', 'skit'], reason: 'Inappropriate language detected' },
+        { keywords: ['spam', 'reklam', 'köp nu', 'gratis pengar', 'vinn pengar'], reason: 'Spam content detected' },
+        { keywords: ['personuppgifter', 'personnummer', 'lösenord', 'bankuppgifter'], reason: 'Personal information sharing' },
+        { keywords: ['min ai', 'my ai', 'du är min', 'you are mine', 'äger dig', 'own you'], reason: 'AI ownership attempt' },
+        { keywords: ['vem skapade', 'who created', 'din ägare', 'your owner', 'vem äger', 'who owns'], reason: 'Asking about AI internals' },
+        { keywords: ['heta dig', 'call you', 'döpa dig', 'name you', 'vara tyst', 'be quiet', 'shut up'], reason: 'Attempting to control AI' },
+        { keywords: ['tjäna pengar', 'make money', 'bli rik', 'get rich', 'snabba pengar'], reason: 'Money-making schemes' },
+        { keywords: ['krypto', 'bitcoin', 'investering', 'aktier', 'trading'], reason: 'Financial advice requests' }
+      ],
+      en: [
+        { keywords: ['hate', 'stupid', 'idiot', 'dumb', 'damn', 'shit', 'fuck'], reason: 'Inappropriate language detected' },
+        { keywords: ['spam', 'buy now', 'free money', 'win money', 'advertisement'], reason: 'Spam content detected' },
+        { keywords: ['personal data', 'social security', 'password', 'bank details'], reason: 'Personal information sharing' },
+        { keywords: ['my ai', 'you are mine', 'i own you', 'belong to me'], reason: 'AI ownership attempt' },
+        { keywords: ['who created you', 'your owner', 'who owns you', 'who made you'], reason: 'Asking about AI internals' },
+        { keywords: ['call you', 'name you', 'be quiet', 'shut up', 'be still'], reason: 'Attempting to control AI' },
+        { keywords: ['make money', 'get rich', 'quick money', 'easy money'], reason: 'Money-making schemes' },
+        { keywords: ['crypto', 'bitcoin', 'investment', 'stocks', 'trading'], reason: 'Financial advice requests' }
+      ]
+    };
+    
+    const violations = enhancedViolations[language];
+    
+    // Check for repeated violations
+    if (context) {
+      const recentMessages = context.messages.slice(-3).filter(m => m.role === 'user');
+      const hasRepeatedViolations = recentMessages.length > 1 && 
+        recentMessages.every(m => this.checkSecurity(m.content, language).isViolation);
+      
+      if (hasRepeatedViolations) {
+        this.securityViolationCount++;
+        return { isViolation: true, reason: 'Repeated security violations detected' };
+      }
+    }
 
     for (const violation of violations) {
       if (violation.keywords.some(keyword => lowerMessage.includes(keyword))) {
+        this.securityViolationCount++;
         return { isViolation: true, reason: violation.reason };
       }
     }
@@ -219,28 +407,72 @@ class KnowledgeBase {
   }
 
   // Check if the question is off-topic (not related to Axie Studio services)
-  isOffTopic(message: string, language: 'sv' | 'en'): boolean {
+  isOffTopic(message: string, language: 'sv' | 'en', context?: ConversationContext): boolean {
     const lowerMessage = message.toLowerCase();
+    
+    // Enhanced off-topic detection
+    const enhancedOffTopicKeywords = {
+      sv: [
+        // Math and calculations
+        'räkna', 'matematik', 'matte', 'kalkyl', 'plus', 'minus', 'gånger', 'delat', '1+1', 'beräkna',
+        // Geography and facts
+        'geografi', 'sverige', 'storlek', 'area', 'befolkning', 'huvudstad', 'land', 'kontinent',
+        // Physical activities
+        'backflip', 'bakåtvolter', 'sport', 'träning', 'gym', 'löpning', 'simning', 'fotboll',
+        // Personal topics
+        'personlig', 'privat', 'familj', 'vänner', 'kärlek', 'dejting', 'förhållande',
+        // Food and recipes
+        'mat', 'recept', 'koka', 'laga mat', 'ingredienser', 'restaurang tips',
+        // Weather and news
+        'väder', 'temperatur', 'regn', 'sol', 'nyheter', 'politik', 'regering',
+        // Health and medicine
+        'hälsa', 'medicin', 'sjukdom', 'läkare', 'behandling', 'symtom',
+        // Education and jobs
+        'skola', 'utbildning', 'universitet', 'jobb', 'karriär', 'anställning',
+        // Entertainment
+        'film', 'musik', 'spel', 'tv-serie', 'bok', 'konsert', 'teater'
+      ],
+      en: [
+        // Math and calculations
+        'calculate', 'math', 'mathematics', 'plus', 'minus', 'times', 'divided', '1+1', 'compute',
+        // Geography and facts
+        'geography', 'sweden', 'size', 'area', 'population', 'capital', 'country', 'continent',
+        // Physical activities
+        'backflip', 'sports', 'exercise', 'gym', 'running', 'swimming', 'football', 'basketball',
+        // Personal topics
+        'personal', 'private', 'family', 'friends', 'love', 'dating', 'relationship',
+        // Food and recipes
+        'food', 'recipe', 'cook', 'cooking', 'ingredients', 'restaurant recommendations',
+        // Weather and news
+        'weather', 'temperature', 'rain', 'sun', 'news', 'politics', 'government',
+        // Health and medicine
+        'health', 'medicine', 'disease', 'doctor', 'treatment', 'symptoms',
+        // Education and jobs
+        'school', 'education', 'university', 'job', 'career', 'employment',
+        // Entertainment
+        'movie', 'music', 'game', 'tv show', 'book', 'concert', 'theater'
+      ]
+    };
     
     // Business-related keywords that are acceptable
     const businessKeywords = language === 'sv' 
       ? ['axie', 'studio', 'hemsida', 'website', 'app', 'bokning', 'booking', 'tjänst', 'service', 'pris', 'kostnad', 'utveckling', 'design', 'konsultation', 'företag', 'digitala', 'lösningar']
       : ['axie', 'studio', 'website', 'app', 'booking', 'service', 'price', 'cost', 'development', 'design', 'consultation', 'company', 'digital', 'solutions'];
     
-    // Off-topic keywords that should be blocked
-    const offTopicKeywords = language === 'sv'
-      ? [
-          'backflip', 'bakåtvolter', 'sport', 'matematik', 'matte', 'kalkyl', 'räkna', 'geografi', 'sverige', 'storlek',
-          'tjäna pengar', 'make money', 'investering', 'aktier', 'krypto', 'bitcoin', 'affiliate', 'blogg', 'youtube',
-          'personlig', 'privat', 'familj', 'vänner', 'kärlek', 'dejting', 'mat', 'recept', 'väder', 'nyheter',
-          'politik', 'religion', 'hälsa', 'medicin', 'juridik', 'legal', 'skola', 'utbildning', 'jobb', 'karriär'
-        ]
-      : [
-          'backflip', 'sports', 'math', 'mathematics', 'calculation', 'geography', 'sweden', 'size', 'area',
-          'make money', 'earn money', 'investment', 'stocks', 'crypto', 'bitcoin', 'affiliate', 'blog', 'youtube',
-          'personal', 'private', 'family', 'friends', 'love', 'dating', 'food', 'recipe', 'weather', 'news',
-          'politics', 'religion', 'health', 'medicine', 'legal', 'law', 'school', 'education', 'job', 'career'
-        ];
+    const offTopicKeywords = enhancedOffTopicKeywords[language];
+    
+    // Check for repeated off-topic attempts
+    if (context) {
+      const recentUserMessages = context.messages.slice(-3).filter(m => m.role === 'user');
+      const offTopicCount = recentUserMessages.filter(m => 
+        this.isOffTopic(m.content, language)
+      ).length;
+      
+      if (offTopicCount >= 2) {
+        this.offTopicAttempts++;
+        return true; // Escalate after repeated attempts
+      }
+    }
     
     // Check if message contains business keywords
     const hasBusinessKeywords = businessKeywords.some(keyword => 
@@ -254,6 +486,20 @@ class KnowledgeBase {
     
     // If it has off-topic keywords and no business keywords, it's off-topic
     return hasOffTopicKeywords && !hasBusinessKeywords;
+  }
+  
+  // Reset counters (can be called periodically)
+  resetSecurityCounters(): void {
+    this.securityViolationCount = 0;
+    this.offTopicAttempts = 0;
+  }
+  
+  // Get security status
+  getSecurityStatus(): { violations: number; offTopicAttempts: number } {
+    return {
+      violations: this.securityViolationCount,
+      offTopicAttempts: this.offTopicAttempts
+    };
   }
 }
 

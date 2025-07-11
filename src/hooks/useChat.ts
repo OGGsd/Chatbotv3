@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { supabase, createChatSession, saveMessage, loadChatHistory, updateSessionTitle } from '../lib/supabase';
-import { generateResponse, ChatMessage } from '../lib/openai';
+import { generateResponse, ChatMessage, ResponseAnalysis } from '../lib/openai';
 
 export interface Message {
   id: string;
@@ -107,58 +107,35 @@ export function useChat() {
       chatMessages.push({ role: 'user', content: content.trim() });
 
       // Generate response
-      const response = await generateResponse(chatMessages);
+      const responseAnalysis = await generateResponse(chatMessages);
       
       // Remove thinking message and add real response
       setMessages(prev => prev.filter(msg => !msg.isLoading));
       
-      // Check for booking intent - multiple patterns
-      const bookingMatch = response.match(/BOOKING_INTENT:([^:]+):([^|]+)/);
+      // Use sophisticated booking logic
       let bookingIntent = undefined;
-      let cleanResponse = response;
       
-      if (bookingMatch) {
-        const serviceType = bookingMatch[1];
-        const serviceName = bookingMatch[2];
-        bookingIntent = { serviceType, serviceName };
-        // Remove the booking intent from the displayed message
-        cleanResponse = response.replace(/BOOKING_INTENT:[^:]+:[^|]+\|?/g, '').trim();
-      } else {
-        // Fallback: Check if response contains booking-related keywords
-        const lowerResponse = response.toLowerCase();
-        const bookingKeywords = [
-          'boka', 'booking', 'konsultation', 'consultation', 'tid', 'time',
-          'hemsida', 'website', 'bokningssystem', 'booking system',
-          'app', 'utveckling', 'development', 'komplett', 'complete'
-        ];
+      if (responseAnalysis.shouldShowBooking && responseAnalysis.bookingType) {
+        // Map service types to display names
+        const serviceNames = {
+          'onboarding': 'Kostnadsfri Konsultation',
+          'website': 'Hemsida',
+          'booking-system': 'Bokningssystem',
+          'app-development': 'App-utveckling',
+          'ecommerce': 'E-handel',
+          'complete-service': 'Komplett Tjänst'
+        };
         
-        const hasBookingKeywords = bookingKeywords.some(keyword => 
-          lowerResponse.includes(keyword)
-        );
-        
-        if (hasBookingKeywords) {
-          // Determine service type based on content
-          if (lowerResponse.includes('konsultation') || lowerResponse.includes('consultation')) {
-            bookingIntent = { serviceType: 'onboarding', serviceName: 'Kostnadsfri Konsultation' };
-          } else if (lowerResponse.includes('hemsida') || lowerResponse.includes('website')) {
-            bookingIntent = { serviceType: 'website', serviceName: 'Hemsida' };
-          } else if (lowerResponse.includes('bokningssystem') || lowerResponse.includes('booking system')) {
-            bookingIntent = { serviceType: 'booking-system', serviceName: 'Bokningssystem' };
-          } else if (lowerResponse.includes('app') || lowerResponse.includes('utveckling')) {
-            bookingIntent = { serviceType: 'app-development', serviceName: 'App-utveckling' };
-          } else if (lowerResponse.includes('komplett') || lowerResponse.includes('complete')) {
-            bookingIntent = { serviceType: 'complete-service', serviceName: 'Komplett Tjänst' };
-          } else {
-            // Default to consultation for any booking-related response
-            bookingIntent = { serviceType: 'onboarding', serviceName: 'Kostnadsfri Konsultation' };
-          }
-        }
+        bookingIntent = { 
+          serviceType: responseAnalysis.bookingType, 
+          serviceName: serviceNames[responseAnalysis.bookingType as keyof typeof serviceNames] || 'Kostnadsfri Konsultation'
+        };
       }
       
       const assistantMessage: Message = {
         id: uuidv4(),
         role: 'assistant',
-        content: cleanResponse,
+        content: responseAnalysis.response,
         timestamp: new Date(),
         bookingIntent
       };
@@ -166,9 +143,15 @@ export function useChat() {
       setMessages(prev => [...prev, assistantMessage]);
 
       // Save assistant message to database
-      await saveMessage(sessionId, 'assistant', cleanResponse);
+      await saveMessage(sessionId, 'assistant', responseAnalysis.response);
 
-      return { hasBookingIntent: !!bookingIntent, serviceType: bookingIntent?.serviceType, response: cleanResponse };
+      return { 
+        hasBookingIntent: !!bookingIntent, 
+        serviceType: bookingIntent?.serviceType, 
+        response: responseAnalysis.response,
+        conversationStage: responseAnalysis.conversationStage,
+        confidence: responseAnalysis.confidence
+      };
 
     } catch (error) {
       console.error('Error sending message:', error);
