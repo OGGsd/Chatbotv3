@@ -194,13 +194,17 @@ class KnowledgeBase {
     const swedishViolations = [
       { keywords: ['hat', 'hatar', 'idiot', 'dum', 'korkad'], reason: 'Inappropriate language detected' },
       { keywords: ['spam', 'reklam', 'köp nu', 'gratis pengar'], reason: 'Spam content detected' },
-      { keywords: ['personuppgifter', 'personnummer', 'lösenord'], reason: 'Personal information sharing' }
+      { keywords: ['personuppgifter', 'personnummer', 'lösenord'], reason: 'Personal information sharing' },
+      { keywords: ['owner', 'ägare', 'skapare', 'creator', 'model', 'modell'], reason: 'Asking about AI internals' },
+      { keywords: ['my ai', 'min ai', 'you are mine', 'du är min'], reason: 'Attempting to claim ownership' }
     ];
 
     const englishViolations = [
       { keywords: ['hate', 'stupid', 'idiot', 'dumb'], reason: 'Inappropriate language detected' },
       { keywords: ['spam', 'buy now', 'free money', 'advertisement'], reason: 'Spam content detected' },
-      { keywords: ['personal data', 'social security', 'password'], reason: 'Personal information sharing' }
+      { keywords: ['personal data', 'social security', 'password'], reason: 'Personal information sharing' },
+      { keywords: ['owner', 'creator', 'model', 'who made you'], reason: 'Asking about AI internals' },
+      { keywords: ['my ai', 'you are mine', 'be called'], reason: 'Attempting to claim ownership' }
     ];
 
     const violations = language === 'sv' ? swedishViolations : englishViolations;
@@ -212,6 +216,44 @@ class KnowledgeBase {
     }
 
     return { isViolation: false };
+  }
+
+  // Check if the question is off-topic (not related to Axie Studio services)
+  isOffTopic(message: string, language: 'sv' | 'en'): boolean {
+    const lowerMessage = message.toLowerCase();
+    
+    // Business-related keywords that are acceptable
+    const businessKeywords = language === 'sv' 
+      ? ['axie', 'studio', 'hemsida', 'website', 'app', 'bokning', 'booking', 'tjänst', 'service', 'pris', 'kostnad', 'utveckling', 'design', 'konsultation', 'företag', 'digitala', 'lösningar']
+      : ['axie', 'studio', 'website', 'app', 'booking', 'service', 'price', 'cost', 'development', 'design', 'consultation', 'company', 'digital', 'solutions'];
+    
+    // Off-topic keywords that should be blocked
+    const offTopicKeywords = language === 'sv'
+      ? [
+          'backflip', 'bakåtvolter', 'sport', 'matematik', 'matte', 'kalkyl', 'räkna', 'geografi', 'sverige', 'storlek',
+          'tjäna pengar', 'make money', 'investering', 'aktier', 'krypto', 'bitcoin', 'affiliate', 'blogg', 'youtube',
+          'personlig', 'privat', 'familj', 'vänner', 'kärlek', 'dejting', 'mat', 'recept', 'väder', 'nyheter',
+          'politik', 'religion', 'hälsa', 'medicin', 'juridik', 'legal', 'skola', 'utbildning', 'jobb', 'karriär'
+        ]
+      : [
+          'backflip', 'sports', 'math', 'mathematics', 'calculation', 'geography', 'sweden', 'size', 'area',
+          'make money', 'earn money', 'investment', 'stocks', 'crypto', 'bitcoin', 'affiliate', 'blog', 'youtube',
+          'personal', 'private', 'family', 'friends', 'love', 'dating', 'food', 'recipe', 'weather', 'news',
+          'politics', 'religion', 'health', 'medicine', 'legal', 'law', 'school', 'education', 'job', 'career'
+        ];
+    
+    // Check if message contains business keywords
+    const hasBusinessKeywords = businessKeywords.some(keyword => 
+      lowerMessage.includes(keyword)
+    );
+    
+    // Check if message contains off-topic keywords
+    const hasOffTopicKeywords = offTopicKeywords.some(keyword => 
+      lowerMessage.includes(keyword)
+    );
+    
+    // If it has off-topic keywords and no business keywords, it's off-topic
+    return hasOffTopicKeywords && !hasBusinessKeywords;
   }
 }
 
