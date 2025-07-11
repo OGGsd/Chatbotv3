@@ -355,7 +355,7 @@ class UltimateAI {
       conversationEngine.analyzeConversation(sessionId, userMessage, conversationHistory),
       intelligentKnowledgeBase.getIntelligentResponse(
         userMessage,
-        consciousnessState.conversationState,
+        conversationAnalysis.state || consciousnessState.conversationState,
         contextualData.knowledgeFiles
       ),
       advancedSecuritySystem.analyzeMessage(sessionId, userMessage, conversationHistory)
