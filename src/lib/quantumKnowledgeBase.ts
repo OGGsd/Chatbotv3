@@ -1,6 +1,31 @@
 // Quantum Knowledge Base - Multi-Dimensional Information Processing
 // This system processes knowledge across multiple dimensions and contexts
 
+// Supporting Classes
+class ContextualMemory {
+  private memory: Map<string, any> = new Map();
+  
+  store(key: string, value: any): void {
+    this.memory.set(key, value);
+  }
+  
+  retrieve(key: string): any {
+    return this.memory.get(key);
+  }
+}
+
+class ReasoningEngine {
+  private rules: any[] = [];
+  
+  addRule(rule: any): void {
+    this.rules.push(rule);
+  }
+  
+  process(input: any): any {
+    return input;
+  }
+}
+
 export interface QuantumKnowledgeState {
   // Multi-Dimensional Knowledge
   knowledgeDimensions: KnowledgeDimension[];
