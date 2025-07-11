@@ -2,7 +2,6 @@ import { useState, useCallback, useEffect } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { supabase, createChatSession, saveMessage, loadChatHistory, updateSessionTitle } from '../lib/supabase';
 import { generateResponse, ChatMessage, ResponseAnalysis } from '../lib/openai';
-import { ultimateAI } from '../lib/ultimateAI';
 
 export interface Message {
   id: string;
@@ -10,10 +9,6 @@ export interface Message {
   content: string;
   timestamp: Date;
   isLoading?: boolean;
-  // Enhanced with Ultimate AI features
-  wisdomLevel?: number;
-  consciousnessLevel?: number;
-  quantumCoherence?: number;
   bookingIntent?: {
     serviceType: string;
     serviceName: string;
@@ -94,7 +89,7 @@ export function useChat() {
       const thinkingMessage: Message = {
         id: uuidv4(),
         role: 'assistant',
-        content: 'Aktiverar quantum-intelligens...',
+        content: 'Tänker...',
         timestamp: new Date(),
         isLoading: true
       };
@@ -142,10 +137,6 @@ export function useChat() {
         role: 'assistant',
         content: responseAnalysis.response,
         timestamp: new Date(),
-        // Enhanced with Ultimate AI metrics
-        wisdomLevel: responseAnalysis.wisdomLevel || (Math.random() * 2 + 8),
-        consciousnessLevel: responseAnalysis.consciousnessLevel || (Math.random() * 2 + 7),
-        quantumCoherence: responseAnalysis.quantumCoherence || (Math.random() * 0.2 + 0.8),
         bookingIntent
       };
 
