@@ -106,9 +106,9 @@ export async function generateResponse(messages: ChatMessage[]): Promise<Respons
     );
     
     // Enhanced security validation with Ultimate AI insights
-    const isUltimateSecurityViolation = ultimateAnalysis.neuralInsights?.securityAnalysis?.shouldBlock || 
+    const isUltimateSecurityViolation = (ultimateAnalysis.neuralInsights?.securityAnalysis?.shouldBlock) || 
                                        securityAnalysis.isBlocked ||
-                                       ultimateAnalysis.quantumInsights?.securityThreat || false;
+                                       (ultimateAnalysis.quantumInsights?.securityThreat) || false;
     
     // Security check
     if (latestUserMessage?.role === 'user') {

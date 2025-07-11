@@ -324,12 +324,14 @@ class UltimateAI {
     consciousnessState: any
   ): Promise<MultiIntelligenceAnalysis> {
     
+    // Initialize conversationAnalysis first
+    const conversationAnalysis = conversationEngine.analyzeConversation(sessionId, userMessage, conversationHistory);
+    
     // Parallel processing of all intelligence systems
     const [
       neuralAnalysis,
       quantumKnowledge,
       hyperSecurity,
-      conversationAnalysis,
       intelligentKnowledge,
       advancedSecurity
     ] = await Promise.all([
@@ -352,11 +354,10 @@ class UltimateAI {
         consciousnessState.userProfile,
         conversationHistory
       ),
-      conversationEngine.analyzeConversation(sessionId, userMessage, conversationHistory),
       intelligentKnowledgeBase.getIntelligentResponse(
         userMessage,
         conversationAnalysis.state || consciousnessState.conversationState,
-        contextualData.knowledgeFiles
+        contextualData.knowledgeFiles || []
       ),
       advancedSecuritySystem.analyzeMessage(sessionId, userMessage, conversationHistory)
     ]);
