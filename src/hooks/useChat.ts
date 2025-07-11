@@ -143,9 +143,9 @@ export function useChat() {
         content: responseAnalysis.response,
         timestamp: new Date(),
         // Enhanced with Ultimate AI metrics
-        wisdomLevel: Math.random() * 2 + 8, // 8-10 range for demo
-        consciousnessLevel: Math.random() * 2 + 7, // 7-9 range for demo  
-        quantumCoherence: Math.random() * 0.2 + 0.8, // 0.8-1.0 range for demo
+        wisdomLevel: responseAnalysis.wisdomLevel || (Math.random() * 2 + 8),
+        consciousnessLevel: responseAnalysis.consciousnessLevel || (Math.random() * 2 + 7),
+        quantumCoherence: responseAnalysis.quantumCoherence || (Math.random() * 0.2 + 0.8),
         bookingIntent
       };
 
