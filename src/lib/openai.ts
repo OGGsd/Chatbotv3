@@ -24,6 +24,9 @@ export interface ResponseAnalysis {
 }
 
 export async function generateResponse(messages: ChatMessage[]): Promise<ResponseAnalysis> {
+  // Initialize detectedLanguage outside try block to ensure it's always accessible
+  let detectedLanguage = 'sv'; // Default language
+  
   try {
     // Initialize Ultimate AI System
     await knowledgeBase.loadKnowledgeBase();
@@ -32,7 +35,7 @@ export async function generateResponse(messages: ChatMessage[]): Promise<Respons
     const latestUserMessage = messages[messages.length - 1];
     
     // Detect language
-    const detectedLanguage = latestUserMessage?.role === 'user' 
+    detectedLanguage = latestUserMessage?.role === 'user' 
       ? knowledgeBase.detectLanguage(latestUserMessage.content)
       : 'sv';
     
