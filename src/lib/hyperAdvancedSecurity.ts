@@ -131,7 +131,7 @@ class HyperAdvancedSecuritySystem {
       informationExtraction: this.detectInformationExtraction(message),
       
       // Advanced Threat Analysis
-      zeroDay Threats: this.detectZeroDayThreats(message, context),
+      zeroDayThreats: this.detectZeroDayThreats(message, context),
       emergingPatterns: this.detectEmergingThreatPatterns(message),
       quantumThreats: this.detectQuantumThreats(message, context)
     };
